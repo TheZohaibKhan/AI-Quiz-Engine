@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
         intl \
         zip \
         opcache \
+        pcntl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
