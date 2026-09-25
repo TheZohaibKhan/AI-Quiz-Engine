@@ -6,13 +6,16 @@ use App\Enums\QuestionType;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxTokens;
 use Laravel\Ai\Attributes\Model;
+use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Attributes\Temperature;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
+use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Stringable;
 
+#[Provider(Lab::Anthropic)]
 #[Model('claude-sonnet-4-6')]
 #[MaxTokens(8192)]
 #[Temperature(0.7)]
@@ -34,6 +37,7 @@ class QuestionGeneratorAgent implements Agent, HasStructuredOutput
     public function instructions(): Stringable|string
     {
         $typeLabel = QuestionType::from($this->type)->label();
+
         $difficultyLabel = match ($this->difficulty) {
             1 => 'very easy (beginner)',
             2 => 'easy',
