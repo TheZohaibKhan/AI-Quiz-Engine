@@ -23,3 +23,4 @@ yarn-error.log
 /.zed
 *.csv
 /.claude/settings.local.json
+render.env
