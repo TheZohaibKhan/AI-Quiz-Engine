@@ -48,7 +48,7 @@ RUN composer install \
 # Copy application
 COPY . .
 
-# Run Laravel Composer scripts after artisan is available
+# Generate optimized autoloader
 RUN composer dump-autoload \
     --no-dev \
     --optimize
@@ -80,6 +80,12 @@ COPY docker/nginx.conf /etc/nginx/sites-available/default
 # Supervisor configuration
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Laravel startup script
+COPY docker/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+# Render expects the web service on port 10000
 EXPOSE 10000
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Start Laravel through startup script
+CMD ["/usr/local/bin/start.sh"]
