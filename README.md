@@ -1,20 +1,26 @@
-# 🎓 AI Quiz Engine
+# AI Quiz Engine
 
-> An AI-powered quiz and examination platform built with Laravel 12, Livewire 4, PostgreSQL, pgvector, Gemini AI, and Laravel Reverb.
+An AI-powered quiz and examination platform built with **Laravel 12** and **Livewire 4**. The platform provides separate workflows for teachers and students, with AI-assisted question generation, answer evaluation, contextual hints, similarity search, usage tracking, and examination management.
 
-AI Quiz Engine is a full-stack web application designed to simplify the creation, management, delivery, evaluation, and analysis of online examinations.
+## 🚀 Overview
 
-The platform provides dedicated workflows for **Teachers** and **Students**, with AI-assisted question generation, answer evaluation, contextual hints, similarity search, AI usage tracking, examination management, leaderboards, and result analysis.
+AI Quiz Engine is a full-stack web application designed to simplify the creation, management, and evaluation of online examinations.
+
+Teachers can create examinations, manage question banks, generate questions using AI, monitor AI usage, and review student results.
+
+Students can take examinations, submit answers, view results, review attempts, and participate in exam leaderboards.
+
+The application combines Laravel's backend capabilities with Livewire's reactive interface and PostgreSQL/pgvector for AI-powered similarity search.
 
 ---
 
 ## 🌐 Live Demo
 
-🚀 **Live Application**
+**Live Application:**
 
 https://ai-quiz-engine-b049.onrender.com
 
-💻 **GitHub Repository**
+**GitHub Repository:**
 
 https://github.com/TheZohaibKhan/AI-Quiz-Engine
 
@@ -26,16 +32,14 @@ https://github.com/TheZohaibKhan/AI-Quiz-Engine
 
 - Create and manage examinations
 - Edit existing examinations
-- Add, edit, and manage questions
+- Add and manage exam questions
 - Maintain a question bank
 - Generate questions using AI
-- Import questions using CSV
-- Publish examinations
-- View student submissions
 - Review examination results
 - Monitor AI usage
-- Export examination and result information as PDF
 - Manage AI-assisted examination workflows
+- Import questions using CSV
+- Export examination/result information as PDF
 
 ### 👨‍🎓 Student Features
 
@@ -44,40 +48,38 @@ https://github.com/TheZohaibKhan/AI-Quiz-Engine
 - Take online examinations
 - Submit examination attempts
 - View examination results
-- Review previous attempts
+- View previous attempts
 - View exam leaderboards
 - Receive AI-powered assistance where enabled
 
 ---
 
-# 🤖 AI Capabilities
+## 🤖 AI Capabilities
 
-AI Quiz Engine integrates AI into multiple stages of the examination workflow.
+The platform integrates AI into multiple parts of the examination workflow.
 
-## AI Question Generation
+### AI Question Generation
 
-Teachers can generate examination questions automatically based on the configured examination topic or content.
+Teachers can use AI to generate examination questions based on the configured examination content.
 
-The application supports configurable AI providers and models through environment variables and application configuration.
+### AI Answer Grading
 
-## AI Answer Evaluation
+The platform supports AI-assisted evaluation of short-answer responses, including partial-credit grading.
 
-The platform supports AI-assisted evaluation of short-answer responses, including partial-credit grading where applicable.
+### Socratic Hints
 
-## Socratic Hints
+Students can receive AI-generated hints designed to guide their reasoning rather than directly providing the answer.
 
-Students can receive AI-generated hints designed to guide their reasoning rather than directly revealing the answer.
-
-## Similarity Search
+### Similarity Search
 
 The application uses embeddings and vector similarity search to retrieve semantically related questions and information.
 
-## Multiple AI Providers
+### Multiple AI Providers
 
 The application is designed to work with multiple AI providers, including:
 
-- Google Gemini
 - Anthropic
+- Google Gemini
 - OpenAI
 - Ollama
 
@@ -85,7 +87,7 @@ AI provider configuration is handled through environment variables and applicati
 
 ---
 
-# 🧠 AI Usage & Cost Controls
+## 🧠 AI Usage & Cost Controls
 
 The application includes AI usage tracking and rate limiting.
 
@@ -97,9 +99,8 @@ Features include:
 - Daily AI budget configuration
 - Embedding usage tracking
 - AI provider/model configuration
-- AI usage monitoring
 
-These controls help manage AI consumption and reduce unexpected API costs.
+This helps control AI usage and reduce unexpected API costs.
 
 Example configuration:
 
