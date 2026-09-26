@@ -1,16 +1,22 @@
-# AI Quiz Engine
+# 🎓 AI Quiz Engine
 
-An AI-powered quiz and examination platform built with **Laravel 12** and **Livewire 4**. The platform provides separate workflows for teachers and students, with AI-assisted question generation, answer evaluation, contextual hints, similarity search, usage tracking, and examination management.
+> An AI-powered quiz and examination platform built with Laravel 12, Livewire 4, PostgreSQL, pgvector, Gemini AI, and Laravel Reverb.
 
-## 🚀 Overview
+AI Quiz Engine is a full-stack web application designed to simplify the creation, management, delivery, evaluation, and analysis of online examinations.
 
-AI Quiz Engine is a full-stack web application designed to simplify the creation, management, and evaluation of online examinations.
+The platform provides dedicated workflows for **Teachers** and **Students**, with AI-assisted question generation, answer evaluation, contextual hints, similarity search, AI usage tracking, examination management, leaderboards, and result analysis.
 
-Teachers can create examinations, manage question banks, generate questions using AI, monitor AI usage, and review student results.
+---
 
-Students can take examinations, submit answers, view results, review attempts, and participate in exam leaderboards.
+## 🌐 Live Demo
 
-The application combines Laravel's backend capabilities with Livewire's reactive interface and PostgreSQL/pgvector for AI-powered similarity search.
+🚀 **Live Application**
+
+https://ai-quiz-engine-b049.onrender.com
+
+💻 **GitHub Repository**
+
+https://github.com/TheZohaibKhan/AI-Quiz-Engine
 
 ---
 
@@ -20,14 +26,16 @@ The application combines Laravel's backend capabilities with Livewire's reactive
 
 - Create and manage examinations
 - Edit existing examinations
-- Add and manage exam questions
+- Add, edit, and manage questions
 - Maintain a question bank
 - Generate questions using AI
+- Import questions using CSV
+- Publish examinations
+- View student submissions
 - Review examination results
 - Monitor AI usage
+- Export examination and result information as PDF
 - Manage AI-assisted examination workflows
-- Import questions using CSV
-- Export examination/result information as PDF
 
 ### 👨‍🎓 Student Features
 
@@ -36,38 +44,40 @@ The application combines Laravel's backend capabilities with Livewire's reactive
 - Take online examinations
 - Submit examination attempts
 - View examination results
-- View previous attempts
+- Review previous attempts
 - View exam leaderboards
 - Receive AI-powered assistance where enabled
 
 ---
 
-## 🤖 AI Capabilities
+# 🤖 AI Capabilities
 
-The platform integrates AI into multiple parts of the examination workflow.
+AI Quiz Engine integrates AI into multiple stages of the examination workflow.
 
-### AI Question Generation
+## AI Question Generation
 
-Teachers can use AI to generate examination questions based on the configured examination content.
+Teachers can generate examination questions automatically based on the configured examination topic or content.
 
-### AI Answer Grading
+The application supports configurable AI providers and models through environment variables and application configuration.
 
-The platform supports AI-assisted evaluation of short-answer responses, including partial-credit grading.
+## AI Answer Evaluation
 
-### Socratic Hints
+The platform supports AI-assisted evaluation of short-answer responses, including partial-credit grading where applicable.
 
-Students can receive AI-generated hints designed to guide their reasoning rather than directly providing the answer.
+## Socratic Hints
 
-### Similarity Search
+Students can receive AI-generated hints designed to guide their reasoning rather than directly revealing the answer.
+
+## Similarity Search
 
 The application uses embeddings and vector similarity search to retrieve semantically related questions and information.
 
-### Multiple AI Providers
+## Multiple AI Providers
 
 The application is designed to work with multiple AI providers, including:
 
-- Anthropic
 - Google Gemini
+- Anthropic
 - OpenAI
 - Ollama
 
@@ -75,7 +85,7 @@ AI provider configuration is handled through environment variables and applicati
 
 ---
 
-## 🧠 AI Usage & Cost Controls
+# 🧠 AI Usage & Cost Controls
 
 The application includes AI usage tracking and rate limiting.
 
@@ -87,51 +97,12 @@ Features include:
 - Daily AI budget configuration
 - Embedding usage tracking
 - AI provider/model configuration
+- AI usage monitoring
 
-This helps control AI usage and reduce unexpected API costs.
+These controls help manage AI consumption and reduce unexpected API costs.
 
----
+Example configuration:
 
-## 🗄️ Vector Search & Embeddings
-
-AI Quiz Engine uses **PostgreSQL with pgvector** to support vector-based similarity search.
-
-Embeddings are generated for relevant examination data and can be used to identify semantically similar questions.
-
-The project includes background jobs for:
-
-- Question embedding generation
-- Attempt embedding generation
-
----
-
-## 📚 Examination System
-
-The examination system supports:
-
-- Exam creation
-- Exam editing
-- Time limits
-- Question management
-- Student attempts
-- Result calculation
-- Result viewing
-- Leaderboards
-- PDF exports
-
----
-
-## 🔐 Authentication & Authorization
-
-The application uses Laravel authentication with role-based access.
-
-### Teacher
-
-Teachers have access to:
-
-```text
-/teacher/exams
-/teacher/exams/create
-/teacher/questions
-/teacher/ai-usage
-/teacher/exams/{exam}/results
+```env
+AI_RATE_LIMIT_PER_MINUTE=30
+AI_DAILY_BUDGET=5.00
