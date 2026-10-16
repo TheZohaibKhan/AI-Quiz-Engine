@@ -1,4 +1,4 @@
-::: {align="center"}
+<div align="center">
 # 🧠 AI Quiz Engine
 
 ### AI-powered examination, assessment, and personalized learning platform
@@ -15,7 +15,7 @@ Discover learning gaps**
 **[🚀 Open Live Demo](https://ai-quiz-engine-b049.onrender.com)** ·
 **[📦 GitHub
 Repository](https://github.com/TheZohaibKhan/AI-Quiz-Engine)**
-:::
+</div>
 
 ------------------------------------------------------------------------
 
@@ -754,18 +754,16 @@ tests and avoid making paid API calls from CI.
 
 ## 📚 Useful Documentation
 
-  Resource         Link
-  ---------------- --------------------------------------
-  Laravel 12       https://laravel.com/docs/12.x
-  Laravel AI SDK   https://laravel.com/docs/12.x/ai
-  Livewire         https://livewire.laravel.com
-  Flux UI          https://fluxui.dev
-  PostgreSQL       https://www.postgresql.org/docs/
-  pgvector         https://github.com/pgvector/pgvector
-  Laravel Reverb   https://reverb.laravel.com
-  Pest             https://pestphp.com
-
-------------------------------------------------------------------------
+| Resource | Documentation |
+|---|---|
+| Laravel 12 | [Official Documentation](https://laravel.com/docs/12.x) |
+| Laravel AI SDK | [Official Documentation](https://laravel.com/docs/12.x/ai) |
+| Livewire | [Official Website](https://livewire.laravel.com) |
+| Flux UI | [Official Website](https://fluxui.dev) |
+| PostgreSQL | [Official Documentation](https://www.postgresql.org/docs/) |
+| pgvector | [GitHub Repository](https://github.com/pgvector/pgvector) |
+| Laravel Reverb | [Official Website](https://reverb.laravel.com) |
+| Pest | [Official Website](https://pestphp.com) |
 
 ## 👨‍💻 Project Links
 
@@ -775,7 +773,7 @@ tests and avoid making paid API calls from CI.
     https://github.com/TheZohaibKhan/AI-Quiz-Engine
 -   **Live demo:** https://ai-quiz-engine-b049.onrender.com
 
-::: {align="center"}
+<div align="center">
 **Built with Laravel, Livewire, PostgreSQL, and AI-assisted learning
 workflows.**
-:::
+</div>
