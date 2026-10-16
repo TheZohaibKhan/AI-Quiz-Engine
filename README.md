@@ -1,5 +1,5 @@
 <div align="center">
-#### 🧠 AI Quiz Engine
+<h1>🧠 AI Quiz Engine</h1> 
 
 ### AI-powered examination, assessment, and personalized learning platform
 
