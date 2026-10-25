@@ -44,8 +44,8 @@ new #[Title('Manage Questions')] class extends Component {
     public int $aiDifficulty = 3;
 
     // --- CSV Import ---
-    #[Validate('file|mimes:csv,txt|max:512')]
-    public mixed $csvFile = null;
+    #[Validate('required|string|max:524288')]
+    public string $csvText = '';
 
     // --- Bulk selection ---
     /** @var array<int, int> */
@@ -173,20 +173,18 @@ new #[Title('Manage Questions')] class extends Component {
 
     public function importCsv(): void
     {
-        $this->validateOnly('csvFile');
+        $this->validateOnly('csvText');
 
-        $path = $this->csvFile->storeAs(
-            'imports',
-            'csv-'.$this->exam->id.'-'.time().'.csv',
-            'local',
-        );
+        $path = 'imports/csv-'.$this->exam->id.'-'.time().'.csv';
+
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path, $this->csvText);
 
         ImportQuestionsFromCsvJob::dispatchSync(
             $this->exam->id,
             $path
         );
 
-        $this->csvFile = null;
+        $this->csvText = '';
 
         unset($this->questions);
 
@@ -991,13 +989,14 @@ new #[Title('Manage Questions')] class extends Component {
             <flux:field>
                 <flux:label>CSV File</flux:label>
 
-                <flux:input
+                <input
                     type="file"
-                    wire:model="csvFile"
                     accept=".csv,.txt"
+                    class="block w-full text-sm"
+                    x-on:change="const f = $event.target.files[0]; if (!f) { $wire.csvText = ''; return; } const r = new FileReader(); r.onload = () => { $wire.csvText = r.result; }; r.readAsText(f);"
                 />
 
-                <flux:error name="csvFile" />
+                <flux:error name="csvText" />
             </flux:field>
 
             <div class="flex justify-end gap-3">
