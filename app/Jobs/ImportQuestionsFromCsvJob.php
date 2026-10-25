@@ -76,6 +76,16 @@ class ImportQuestionsFromCsvJob implements ShouldQueue
                 $options = array_values(array_filter(array_map('trim', explode('|', $data['options']))));
             }
 
+            // Answer given as a letter (A, B, C...) -> use the matching option text
+            if ($options !== null && ! in_array($answer, $options, true)) {
+                if (preg_match('/^\(?([A-Za-z])[\).]?$/', $answer, $m)) {
+                    $index = ord(strtoupper($m[1])) - ord('A');
+                    if (isset($options[$index])) {
+                        $answer = $options[$index];
+                    }
+                }
+            }
+
             $exam->questions()->create([
                 'question' => $question,
                 'type' => $type->value,
