@@ -34,6 +34,28 @@ class Question extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // Safety net: if the correct answer is a letter (A, B, C...) and the question
+        // has options, store the matching option text so grading always works.
+        static::saving(function (Question $question): void {
+            $options = $question->options;
+            $answer = trim((string) $question->correct_answer);
+
+            if (! is_array($options) || $options === [] || in_array($answer, $options, true)) {
+                return;
+            }
+
+            if (preg_match('/^\(?([A-Za-z])[\).]?$/', $answer, $m)) {
+                $index = ord(strtoupper($m[1])) - ord('A');
+
+                if (isset($options[$index])) {
+                    $question->correct_answer = $options[$index];
+                }
+            }
+        });
+    }
+
     /** @return BelongsTo<Exam, $this> */
     public function exam(): BelongsTo
     {
