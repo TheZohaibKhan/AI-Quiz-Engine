@@ -19,6 +19,10 @@ class GenerateAttemptEmbeddingJob implements ShouldQueue
 
     public function handle(): void
     {
+        if (config('queue.default') === 'sync') {
+            return;
+        }
+
         $answers = $this->attempt->answers ?? [];
 
         $text = collect($answers)

@@ -19,6 +19,10 @@ class GenerateQuestionEmbeddingJob implements ShouldQueue
 
     public function handle(): void
     {
+        if (config('queue.default') === 'sync') {
+            return;
+        }
+
         $text = $this->question->question.' '.$this->question->correct_answer;
 
         $response = Embeddings::for([$text])->generate();
