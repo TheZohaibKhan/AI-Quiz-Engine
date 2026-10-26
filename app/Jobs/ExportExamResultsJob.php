@@ -30,21 +30,11 @@ class ExportExamResultsJob implements ShouldQueue
 
         $pdf = Pdf::loadView('pdf.exam-results', compact('exam', 'teacher', 'attempts'))
             ->setPaper('a4', 'landscape');
-        $path = 'exports/'.Str::uuid().'-exam-results.pdf';
-
-        Storage::disk('local')->put($path, $pdf->output());
-
-        $downloadUrl = URL::temporarySignedRoute(
-            'exports.download',
-            now()->addHours(24),
-            ['path' => $path],
-        );
-
         Mail::to($teacher->email)->send(
             new ExportReadyMail(
                 mailSubject: 'Export ready: "'.$exam->title.'" results',
-                downloadUrl: $downloadUrl,
-                expiresAt: now()->addHours(24),
+                pdfData: $pdf->output(),
+                pdfName: 'results-'.Str::slug($exam->title).'.pdf',
             )
         );
     }

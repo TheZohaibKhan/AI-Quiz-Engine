@@ -5,6 +5,7 @@ foreach ([
     '/tmp/storage/framework/sessions',
     '/tmp/storage/framework/views',
     '/tmp/storage/logs',
+    '/tmp/storage/fonts',
     '/tmp/bootstrap/cache',
 ] as $dir) {
     if (!is_dir($dir)) {
