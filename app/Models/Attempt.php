@@ -15,15 +15,15 @@ class Attempt extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-    'exam_id',
-    'user_id',
-    'answers',
-    'score',
-    'started_at',
-    'completed_at',
-    'submission_reason',
-    'embedding',
- ];
+        'exam_id',
+        'user_id',
+        'answers',
+        'score',
+        'started_at',
+        'completed_at',
+        'submission_reason',
+        'embedding',
+    ];
 
     protected function casts(): array
     {
