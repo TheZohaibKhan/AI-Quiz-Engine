@@ -123,7 +123,7 @@ new #[Title('Take Exam')] class extends Component {
 
         if ($this->timeRemaining <= 0) {
             $this->timedOut = true;
-            $this->submitExam();
+            $this->completeExam('timeout');
         }
     }
 
@@ -184,20 +184,41 @@ new #[Title('Take Exam')] class extends Component {
 
     public function submitExam(): void
     {
-        // Block submission in preview mode
-        if ($this->isPreview) {
+        $this->completeExam('manual');
+    }
+
+    /**
+     * Automatically submit when the browser tab or window loses focus.
+     */
+    public function submitForTabSwitch(): void
+    {
+        $this->completeExam('tab_switch');
+    }
+
+    /**
+     * Shared submission flow for manual, timeout and tab-switch submissions.
+     */
+    private function completeExam(string $reason): void
+    {
+        // Block submission in preview mode.
+        if ($this->isPreview || ! $this->attempt) {
             return;
         }
 
-        // Idempotency guard — already submitted (double-click or race condition)
+        // Refresh status in case another request has already submitted it.
+        $this->attempt->refresh();
+
         if ($this->attempt->isCompleted()) {
-            $this->redirect(route('student.attempts.results', $this->attempt), navigate: true);
+            $this->redirect(
+                route('student.attempts.results', $this->attempt),
+                navigate: true
+            );
 
             return;
         }
 
-        // Skip validation on auto-submit; answers may be partial
-        if (! $this->timedOut) {
+        // Validate only manual submissions; automatic submissions may be partial.
+        if ($reason === 'manual') {
             $this->validate([
                 'answers'           => 'array',
                 'answers.*.value'   => 'nullable|string|max:500',
@@ -206,12 +227,16 @@ new #[Title('Take Exam')] class extends Component {
         }
 
         $questions = $this->exam->questions;
-        $correct   = 0;
+        $correct = 0;
 
         foreach ($questions as $question) {
             $answerData = $this->answers[$question->id] ?? null;
-            $given      = is_array($answerData) ? ($answerData['value'] ?? null) : $answerData;
-            $flagged    = is_array($answerData) ? ($answerData['flagged'] ?? false) : false;
+            $given = is_array($answerData)
+                ? ($answerData['value'] ?? null)
+                : $answerData;
+            $flagged = is_array($answerData)
+                ? ($answerData['flagged'] ?? false)
+                : false;
 
             if ($given === null || $given === '') {
                 continue;
@@ -219,8 +244,13 @@ new #[Title('Take Exam')] class extends Component {
 
             if ($question->type === QuestionType::ShortAnswer) {
                 try {
-                    $result = (new AutoGraderAgent($question->question, $question->correct_answer))
-                        ->prompt($given, provider: ResolvedProviders::list());
+                    $result = (new AutoGraderAgent(
+                        $question->question,
+                        $question->correct_answer
+                    ))->prompt(
+                        $given,
+                        provider: ResolvedProviders::list()
+                    );
 
                     $this->answers[$question->id] = [
                         'value'          => $given,
@@ -252,14 +282,15 @@ new #[Title('Take Exam')] class extends Component {
             : 0;
 
         $this->attempt->update([
-            'answers'      => $this->answers,
-            'score'        => $score,
-            'completed_at' => now(),
+            'answers'           => $this->answers,
+            'score'             => $score,
+            'completed_at'      => now(),
+            'submission_reason' => $reason,
         ]);
 
         GenerateAttemptEmbeddingJob::dispatch($this->attempt);
 
-        // Broadcast live submission counter to teacher dashboard
+        // Broadcast live submission counter to teacher dashboard.
         if (config('broadcasting.default') === 'reverb') {
             $completedCount = $this->exam->attempts()->completed()->count();
 
@@ -270,11 +301,26 @@ new #[Title('Take Exam')] class extends Component {
             );
         }
 
-        if ($this->timedOut) {
-            $this->dispatch('toast', variant: 'warning', heading: "Time's up", text: 'Your exam has been automatically submitted.');
+        if ($reason === 'timeout') {
+            $this->dispatch(
+                'toast',
+                variant: 'warning',
+                heading: "Time's up",
+                text: 'Your exam has been automatically submitted.'
+            );
+        } elseif ($reason === 'tab_switch') {
+            $this->dispatch(
+                'toast',
+                variant: 'danger',
+                heading: 'Exam submitted',
+                text: 'Your exam was automatically submitted because you switched tabs or windows.'
+            );
         }
 
-        $this->redirect(route('student.attempts.results', $this->attempt), navigate: true);
+        $this->redirect(
+            route('student.attempts.results', $this->attempt),
+            navigate: true
+        );
     }
 
     #[Computed]
@@ -302,7 +348,31 @@ new #[Title('Take Exam')] class extends Component {
     }
 }; ?>
 
-<div class="mx-auto max-w-3xl flex flex-col gap-6">
+<div
+    class="mx-auto max-w-3xl flex flex-col gap-6"
+    @if (! $isPreview)
+        x-data="{
+            violationSubmitted: false,
+            submitForViolation() {
+                if (this.violationSubmitted) return;
+
+                this.violationSubmitted = true;
+                $wire.submitForTabSwitch();
+            },
+            init() {
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        this.submitForViolation();
+                    }
+                });
+
+                window.addEventListener('blur', () => {
+                    this.submitForViolation();
+                });
+            }
+        }"
+    @endif
+>
     @if ($isPreview)
         <flux:callout variant="warning" icon="eye">
             <flux:callout.heading>Preview Mode</flux:callout.heading>

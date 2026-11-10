@@ -21,6 +21,7 @@ class Attempt extends Model
         'score',
         'started_at',
         'completed_at',
+        'submission_reason',
         'embedding',
     ];
 
