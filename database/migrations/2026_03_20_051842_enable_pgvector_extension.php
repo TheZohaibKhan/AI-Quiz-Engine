@@ -1,3 +1,4 @@
+
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -10,7 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::ensureVectorExtensionExists();
+        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+            Schema::ensureVectorExtensionExists();
+        }
     }
 
     /**

@@ -36,7 +36,13 @@ new #[Title('My Attempts')] class extends Component {
         return auth()->user()->attempts()
             ->completed()
             ->with('exam:id,title')
-            ->when($this->search, fn ($q) => $q->whereHas('exam', fn ($q) => $q->where('title', 'ilike', '%'.$this->search.'%')))
+            ->when($this->search, function ($q) {
+    $search = strtolower($this->search);
+
+    $q->whereHas('exam', function ($examQuery) use ($search) {
+        $examQuery->whereRaw('LOWER(title) LIKE ?', ['%'.$search.'%']);
+    });
+})
             ->orderBy($this->sortBy, $this->sortDir)
             ->paginate(15);
     }

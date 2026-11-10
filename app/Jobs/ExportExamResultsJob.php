@@ -10,7 +10,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class ExportExamResultsJob implements ShouldQueue
@@ -24,17 +23,34 @@ class ExportExamResultsJob implements ShouldQueue
 
     public function handle(): void
     {
-        $exam = Exam::with(['attempts' => fn ($q) => $q->completed()->with('student')])->findOrFail($this->examId);
+        $exam = Exam::with([
+            'attempts' => fn ($q) => $q->completed()->with('student'),
+        ])->findOrFail($this->examId);
+
         $teacher = User::findOrFail($this->teacherId);
+
         $attempts = $exam->attempts;
 
-        $pdf = Pdf::loadView('pdf.exam-results', compact('exam', 'teacher', 'attempts'))
-            ->setPaper('a4', 'landscape');
+        // Generate PDF
+        $pdf = Pdf::loadView(
+            'pdf.exam-results',
+            compact('exam', 'teacher', 'attempts')
+        )->setPaper('a4', 'landscape');
+
+        // Convert PDF into data
+        $pdfData = $pdf->output();
+
+        $pdfName = 'results-'.Str::slug($exam->title).'.pdf';
+
+        // Save PDF in storage
+        Storage::disk('local')->put('exports/'.$pdfName, $pdfData);
+
+        // Send PDF through email
         Mail::to($teacher->email)->send(
             new ExportReadyMail(
                 mailSubject: 'Export ready: "'.$exam->title.'" results',
-                pdfData: $pdf->output(),
-                pdfName: 'results-'.Str::slug($exam->title).'.pdf',
+                pdfData: $pdfData,
+                pdfName: $pdfName,
             )
         );
     }

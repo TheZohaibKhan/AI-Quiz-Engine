@@ -19,10 +19,6 @@ class GenerateAttemptEmbeddingJob implements ShouldQueue
 
     public function handle(): void
     {
-        if (config('queue.default') === 'sync') {
-            return;
-        }
-
         $answers = $this->attempt->answers ?? [];
 
         $text = collect($answers)
@@ -36,6 +32,14 @@ class GenerateAttemptEmbeddingJob implements ShouldQueue
 
         $response = Embeddings::for([$text])->generate();
 
-        $this->attempt->update(['embedding' => $response->embeddings[0]]);
+        $embedding = $response->embeddings[0] ?? null;
+
+        if ($embedding === null) {
+            throw new \RuntimeException('Attempt embedding generation returned no result.');
+        }
+
+        $this->attempt->update([
+            'embedding' => $embedding,
+        ]);
     }
 }
