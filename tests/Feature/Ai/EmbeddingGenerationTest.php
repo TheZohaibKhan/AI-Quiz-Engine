@@ -15,7 +15,10 @@ it('stores embedding on question via GenerateQuestionEmbeddingJob', function () 
 
     expect($question->embedding)->toBeNull();
 
-    // Run the job directly with Embeddings already faked globally
+    // Use a non-sync queue configuration to allow embedding generation.
+    config(['queue.default' => 'database']);
+
+    // Run the job directly with Embeddings already faked globally.
     (new GenerateQuestionEmbeddingJob($question))->handle();
 
     $question->refresh();

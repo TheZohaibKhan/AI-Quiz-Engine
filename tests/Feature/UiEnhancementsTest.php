@@ -4,7 +4,6 @@ use App\Jobs\ImportQuestionsFromCsvJob;
 use App\Models\Exam;
 use App\Models\Question;
 use App\Models\User;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -71,14 +70,14 @@ it('questions page imports CSV and creates questions immediately', function () {
     $teacher = User::factory()->teacher()->create();
     $exam = Exam::factory()->published()->for($teacher)->create();
 
-    $csv = UploadedFile::fake()->createWithContent('questions.csv', implode("\n", [
+    $csv = implode("\n", [
         'question,type,correct_answer',
         'What is 2+2?,short_answer,4',
-    ]));
+    ]);
 
     Livewire::actingAs($teacher)
         ->test('pages::teacher.exams.questions', ['exam' => $exam])
-        ->set('csvFile', $csv)
+        ->set('csvText', $csv)
         ->call('importCsv');
 
     expect($exam->questions()->count())->toBe(1)

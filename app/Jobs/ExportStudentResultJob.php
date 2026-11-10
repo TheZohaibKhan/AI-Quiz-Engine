@@ -9,7 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 class ExportStudentResultJob implements ShouldQueue
@@ -20,17 +19,32 @@ class ExportStudentResultJob implements ShouldQueue
 
     public function handle(): void
     {
-        $attempt = Attempt::with(['exam.questions', 'student'])->findOrFail($this->attemptId);
+        $attempt = Attempt::with(['exam.questions', 'student'])
+            ->findOrFail($this->attemptId);
 
         $correctCount = $this->computeCorrectCount($attempt);
         $totalCount = $attempt->exam->questions->count();
 
-        $pdf = Pdf::loadView('pdf.student-result', compact('attempt', 'correctCount', 'totalCount'));
+        // Generate PDF
+        $pdf = Pdf::loadView(
+            'pdf.student-result',
+            compact('attempt', 'correctCount', 'totalCount')
+        );
+
+        // Convert PDF into data
+        $pdfData = $pdf->output();
+
+        $pdfName = 'result-'.Str::slug($attempt->exam->title).'.pdf';
+
+        // Save PDF in storage
+        Storage::disk('local')->put('exports/'.$pdfName, $pdfData);
+
+        // Send PDF through email
         Mail::to($attempt->student->email)->send(
             new ExportReadyMail(
                 mailSubject: 'Your result for "'.$attempt->exam->title.'" is ready',
-                pdfData: $pdf->output(),
-                pdfName: 'result-'.Str::slug($attempt->exam->title).'.pdf',
+                pdfData: $pdfData,
+                pdfName: $pdfName,
             )
         );
     }
@@ -53,6 +67,7 @@ class ExportStudentResultJob implements ShouldQueue
                     }
                 } else {
                     $value = $given['value'] ?? null;
+
                     if ($value && strtolower(trim($value)) === strtolower(trim($question->correct_answer))) {
                         $correct++;
                     }

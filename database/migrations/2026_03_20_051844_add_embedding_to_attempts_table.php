@@ -1,3 +1,4 @@
+
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -11,9 +12,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('attempts', function (Blueprint $table) {
-            $table->vector('embedding', dimensions: 1536)->nullable()->index();
-        });
+        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+            Schema::table('attempts', function (Blueprint $table) {
+                $table->vector('embedding', dimensions: 1536)->nullable()->index();
+            });
+        } else {
+            Schema::table('attempts', function (Blueprint $table) {
+                $table->json('embedding')->nullable();
+            });
+        }
     }
 
     /**

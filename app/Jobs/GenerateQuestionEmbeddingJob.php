@@ -19,6 +19,7 @@ class GenerateQuestionEmbeddingJob implements ShouldQueue
 
     public function handle(): void
     {
+        // Do not generate embeddings when using the sync queue.
         if (config('queue.default') === 'sync') {
             return;
         }
@@ -27,6 +28,16 @@ class GenerateQuestionEmbeddingJob implements ShouldQueue
 
         $response = Embeddings::for([$text])->generate();
 
-        $this->question->update(['embedding' => $response->embeddings[0]]);
+        $embedding = $response->embeddings[0] ?? null;
+
+        if ($embedding === null) {
+            throw new \RuntimeException(
+                'Question embedding generation returned no result.'
+            );
+        }
+
+        $this->question->update([
+            'embedding' => $embedding,
+        ]);
     }
 }
