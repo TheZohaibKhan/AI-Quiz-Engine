@@ -8,6 +8,9 @@ return [
     */
     'url' => env('JUDGE0_URL'),
 
+    // FREE default: when JUDGE0_URL is empty, code runs on the public Wandbox compiler (no account, no key).
+    'wandbox_url' => env('WANDBOX_URL', 'https://wandbox.org'),
+
     // Header name + token (Judge0 Cloud/Sulu or self-hosted use X-Auth-Token by default).
     'auth_header' => env('JUDGE0_AUTH_HEADER', 'X-Auth-Token'),
     'auth_token' => env('JUDGE0_AUTH_TOKEN'),
