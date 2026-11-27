@@ -36,6 +36,10 @@ class ProcessGeneratedQuestionsJob implements ShouldQueue
 
             $type = QuestionType::tryFrom($data['type'] ?? '') ?? QuestionType::ShortAnswer;
 
+            if ($type === QuestionType::Coding) {
+                $type = QuestionType::ShortAnswer;
+            }
+
             $exam->questions()->create([
                 'question' => $data['question'],
                 'type' => $type->value,

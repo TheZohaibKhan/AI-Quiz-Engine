@@ -4,6 +4,7 @@ use App\Jobs\ExportExamResultsJob;
 use App\Models\Attempt;
 use App\Models\Exam;
 use App\Models\Question;
+use App\Services\AnswerGrader;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -14,6 +15,44 @@ new #[Title('Exam Results')] class extends Component {
     public function mount(): void
     {
         abort_unless(auth()->id() === $this->exam->user_id, 403);
+    }
+
+    /**
+     * Re-mark every submitted attempt with the current grading rules
+     * (spacing / capital letters / HTML structure are ignored) and save the new scores.
+     */
+    public function regradeAll(): void
+    {
+        $grader = app(AnswerGrader::class);
+        $questions = $this->exam->questions;
+        $changed = 0;
+
+        foreach ($this->exam->attempts()->completed()->get() as $attempt) {
+            $answers = $attempt->answers ?? [];
+            $correct = 0;
+
+            foreach ($questions as $question) {
+                if ($grader->isCorrect($question, $answers[$question->id] ?? null)) {
+                    $correct++;
+                }
+            }
+
+            $score = $questions->count() > 0 ? (int) round(($correct / $questions->count()) * 100) : 0;
+
+            if ($score !== $attempt->score) {
+                $attempt->update(['score' => $score]);
+                $changed++;
+            }
+        }
+
+        unset($this->attempts, $this->averageScore, $this->passRate, $this->struggledTopics);
+
+        $this->dispatch(
+            'toast',
+            variant: 'success',
+            heading: 'Re-grading complete',
+            text: $changed > 0 ? "{$changed} student score(s) were updated." : 'All scores were already up to date.'
+        );
     }
 
     public function exportResults(): void
@@ -69,26 +108,10 @@ new #[Title('Exam Results')] class extends Component {
             $correctCount = 0;
             $totalAttempts = $attempts->count();
 
+            $grader = app(AnswerGrader::class);
+
             foreach ($attempts as $attempt) {
-                $given = $attempt->answers[$question->id] ?? null;
-
-                if ($given === null) {
-                    continue;
-                }
-
-                if (is_array($given)) {
-                    if ($given['ai_graded'] ?? false) {
-                        if (($given['ai_score'] ?? 0) >= 50) {
-                            $correctCount++;
-                        }
-                    } else {
-                        $value = $given['value'] ?? null;
-                        if ($value !== null && $value !== '' &&
-                            strtolower(trim($value)) === strtolower(trim($question->correct_answer))) {
-                            $correctCount++;
-                        }
-                    }
-                } elseif (strtolower(trim($given)) === strtolower(trim($question->correct_answer))) {
+                if ($grader->isCorrect($question, $attempt->answers[$question->id] ?? null)) {
                     $correctCount++;
                 }
             }
@@ -112,6 +135,12 @@ new #[Title('Exam Results')] class extends Component {
                 <flux:text>{{ $this->attempts->count() }} submission(s)</flux:text>
             </div>
         </div>
+        <div class="flex items-center gap-2">
+        <flux:button variant="outline" icon="arrow-path" wire:click="regradeAll"
+            wire:confirm="Re-mark all submitted attempts with the improved matching rules? Student scores may go up."
+            wire:loading.attr="disabled" wire:target="regradeAll">
+            Re-grade all
+        </flux:button>
         <flux:button variant="outline" wire:click="exportResults" wire:loading.attr="disabled"
             wire:target="exportResults">
             <span wire:loading.remove wire:target="exportResults" class="inline-flex items-center gap-1">
@@ -123,6 +152,7 @@ new #[Title('Exam Results')] class extends Component {
                 Queuing…
             </span>
         </flux:button>
+        </div>
     </div>
 
     {{-- Summary stats --}}

@@ -39,6 +39,10 @@ class Question extends Model
         // Safety net: if the correct answer is a letter (A, B, C...) and the question
         // has options, store the matching option text so grading always works.
         static::saving(function (Question $question): void {
+            if ($question->type === QuestionType::Coding) {
+                return;
+            }
+
             $options = $question->options;
             $answer = trim((string) $question->correct_answer);
 
@@ -54,6 +58,40 @@ class Question extends Model
                 }
             }
         });
+    }
+
+    /**
+     * Settings of a coding question: languages, test cases, html_reference.
+     * They live in the existing `options` JSON column, so no database change is needed.
+     *
+     * @return array{languages: array<int, string>, tests: array<int, array{input: string, output: string}>, html_reference: string}|null
+     */
+    public function codingConfig(): ?array
+    {
+        if ($this->type !== QuestionType::Coding) {
+            return null;
+        }
+
+        $o = is_array($this->options) ? $this->options : [];
+
+        return [
+            'languages' => array_values($o['languages'] ?? ['python']),
+            'tests' => array_values($o['tests'] ?? []),
+            'html_reference' => (string) ($o['html_reference'] ?? ''),
+        ];
+    }
+
+    /** Answer choices (only multiple choice / true-false have them). */
+    public function choices(): array
+    {
+        return $this->type->hasOptions() && is_array($this->options) ? $this->options : [];
+    }
+
+    /** Short answers whose expected answer is code get a bigger, monospace box. */
+    public function expectsCode(): bool
+    {
+        return $this->type === QuestionType::ShortAnswer
+            && (bool) preg_match('/[<>{};=]/', (string) $this->correct_answer);
     }
 
     /** @return BelongsTo<Exam, $this> */

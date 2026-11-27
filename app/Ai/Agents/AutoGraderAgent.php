@@ -48,6 +48,7 @@ class AutoGraderAgent implements Agent, HasStructuredOutput, HasTools
         - The "is_correct" field should be true only when score >= 50.
         - The "explanation" should briefly explain why the score was awarded.
         - The "suggestion" should guide the student toward the correct answer without revealing it outright.
+        - If the answer is source code (HTML, CSS, JavaScript, Python, C, SQL, etc.), judge whether it does the same thing as the reference. IGNORE spacing, indentation, line breaks, capital letters in tag/keyword names, quote style (' vs "), attribute order, optional closing tags and harmless extra elements such as <meta> or lang attributes. Never reduce the score for formatting.
         - Respond ONLY with the JSON schema. No extra text.
         INSTRUCTIONS;
     }

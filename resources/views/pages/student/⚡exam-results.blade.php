@@ -3,6 +3,7 @@
 use App\Enums\QuestionType;
 use App\Jobs\ExportStudentResultJob;
 use App\Models\Attempt;
+use App\Services\AnswerGrader;
 use App\Services\QuestionSimilarityService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -21,36 +22,11 @@ new #[Title('Exam Results')] class extends Component {
     public function correctCount(): int
     {
         $correct = 0;
+        $grader = app(AnswerGrader::class);
 
         foreach ($this->attempt->exam->questions as $question) {
-            $given = $this->attempt->answers[$question->id] ?? null;
-
-            if ($given === null) {
-                continue;
-            }
-
-            if (is_array($given)) {
-                if ($given['ai_graded'] ?? false) {
-                    // AI-graded short answer (both old and new shape)
-                    if (($given['ai_score'] ?? 0) >= 50) {
-                        $correct++;
-                    }
-                } else {
-                    // New shape: { value, flagged }
-                    $value = $given['value'] ?? null;
-
-                    if (
-                        $value !== null && $value !== '' &&
-                        strtolower(trim($value)) === strtolower(trim($question->correct_answer))
-                    ) {
-                        $correct++;
-                    }
-                }
-            } else {
-                // Old shape: plain string
-                if (strtolower(trim($given)) === strtolower(trim($question->correct_answer))) {
-                    $correct++;
-                }
+            if ($grader->isCorrect($question, $this->attempt->answers[$question->id] ?? null)) {
+                $correct++;
             }
         }
 
@@ -78,28 +54,10 @@ new #[Title('Exam Results')] class extends Component {
     {
         $incorrectTexts = [];
 
+        $grader = app(AnswerGrader::class);
+
         foreach ($this->attempt->exam->questions as $question) {
-            $given = $this->attempt->answers[$question->id] ?? null;
-
-            if ($given === null) {
-                continue;
-            }
-
-            $isCorrect = false;
-
-            if (is_array($given)) {
-                if ($given['ai_graded'] ?? false) {
-                    $isCorrect = ($given['ai_score'] ?? 0) >= 50;
-                } else {
-                    $value = $given['value'] ?? null;
-                    $isCorrect = $value !== null && $value !== '' &&
-                        strtolower(trim($value)) === strtolower(trim($question->correct_answer));
-                }
-            } else {
-                $isCorrect = strtolower(trim($given)) === strtolower(trim($question->correct_answer));
-            }
-
-            if (! $isCorrect) {
+            if (! $grader->isCorrect($question, $this->attempt->answers[$question->id] ?? null)) {
                 $incorrectTexts[] = $question->question;
             }
         }
@@ -187,10 +145,13 @@ new #[Title('Exam Results')] class extends Component {
                     $rawAnswer = $given;                     // Old plain-string shape
                 }
 
-                $isCorrect = $isAiGraded
-                    ? ($given['ai_score'] ?? 0) >= 50
-                    : ($rawAnswer !== null && $rawAnswer !== '' &&
-                        strtolower(trim($rawAnswer)) === strtolower(trim($question->correct_answer)));
+                $isCorrect = app(AnswerGrader::class)->isCorrect($question, $given);
+                // keep the AI percentage badge only when it agrees with the final verdict
+                $showAi = $isAiGraded && ((($given['ai_score'] ?? 0) >= 50) === $isCorrect);
+                $isCoding = $question->type === QuestionType::Coding;
+                $codeLike = $isCoding || str_contains((string) $rawAnswer, "\n") || $question->expectsCode();
+                $codingResult = $isCoding && is_array($given) ? ($given['coding'] ?? null) : null;
+                $codeStyle = 'white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.8rem; background:#F4F4F5; border-radius:8px; padding:.5rem .7rem; margin:.25rem 0 0;';
             @endphp
             <div class="bento-flat space-y-2" style="{{ $isCorrect
             ? 'border-color:#86EFAC; background:#F0FDF4;'
@@ -207,7 +168,7 @@ new #[Title('Exam Results')] class extends Component {
                                 </svg>
                             </span>
                         @endif
-                        @if ($isAiGraded)
+                        @if ($showAi)
                             <flux:badge size="sm" color="zinc">AI graded</flux:badge>
                             <flux:badge size="sm" :color="$isCorrect ? 'green' : 'red'">
                                 {{ $given['ai_score'] }}%
@@ -220,15 +181,36 @@ new #[Title('Exam Results')] class extends Component {
                     </div>
                 </div>
 
-                <flux:text size="sm">Your answer: <strong>{{ $rawAnswer ?? 'Not answered' }}</strong></flux:text>
+                @if ($codeLike && filled($rawAnswer))
+                    <flux:text size="sm">
+                        Your answer@if ($isCoding && is_array($given) && ($given['language'] ?? null)) ({{ \App\Services\CodeRunner::LANGUAGES[$given['language']]['label'] ?? $given['language'] }})@endif:
+                    </flux:text>
+                    <pre style="{{ $codeStyle }}">{{ $rawAnswer }}</pre>
+                @else
+                    <flux:text size="sm">Your answer: <strong>{{ $rawAnswer ?? 'Not answered' }}</strong></flux:text>
+                @endif
 
-                @if (!$isCorrect && !$isAiGraded)
+                @if ($isCoding && $codingResult)
+                    <flux:text size="sm">
+                        Tests passed: <strong>{{ $codingResult['passed_count'] ?? 0 }} / {{ $codingResult['total'] ?? 0 }}</strong>
+                    </flux:text>
+                    @if (! empty($codingResult['error']))
+                        <flux:text size="sm" style="color:#B45309;">Your code could not be tested automatically ({{ $codingResult['error'] }}). Please tell your teacher.</flux:text>
+                    @endif
+                    @foreach (($codingResult['results'] ?? []) as $tr)
+                        <flux:text size="sm" style="color:{{ ($tr['passed'] ?? false) ? '#16A34A' : '#B91C1C' }};">
+                            Test {{ $tr['test'] }}: {{ $tr['status'] }}@if (! empty($tr['message'])) — {{ $tr['message'] }}@endif
+                        </flux:text>
+                    @endforeach
+                @endif
+
+                @if (!$isCorrect && !$showAi && !$isCoding)
                     <flux:text size="sm" style="color:#16A34A;">
                         Correct answer: <strong>{{ $question->correct_answer }}</strong>
                     </flux:text>
                 @endif
 
-                @if ($isAiGraded)
+                @if ($showAi)
                     @if ($given['ai_explanation'] ?? null)
                         <flux:text size="sm" style="color:#374151;">
                             {{ $given['ai_explanation'] }}

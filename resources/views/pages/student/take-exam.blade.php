@@ -8,6 +8,8 @@ use App\Events\AttemptSubmittedEvent;
 use App\Jobs\GenerateAttemptEmbeddingJob;
 use App\Models\Attempt;
 use App\Models\Exam;
+use App\Services\AnswerGrader;
+use App\Services\CodeRunner;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Ai\Streaming\Events\TextDelta;
@@ -33,6 +35,9 @@ new #[Title('Take Exam')] class extends Component {
     public array $hints = [];
 
     public bool $timedOut = false;
+
+    /** Last "Run code" result per coding question. @var array<int|string, array<string, mixed>> */
+    public array $runResults = [];
 
     #[Url(as: 'preview', except: false)]
     public bool $isPreview = false;
@@ -91,6 +96,15 @@ new #[Title('Take Exam')] class extends Component {
                 $this->answers[$id] = array_merge(['value' => $raw['raw_answer'] ?? '', 'flagged' => false], $raw);
             }
             // Otherwise already in new shape — leave as-is
+
+            // Coding questions remember which language the student picked.
+            if ($question->type === QuestionType::Coding) {
+                $languages = $question->codingConfig()['languages'] ?? ['python'];
+
+                if (! in_array($this->answers[$id]['language'] ?? '', $languages, true)) {
+                    $this->answers[$id]['language'] = $languages[0] ?? 'python';
+                }
+            }
         }
     }
 
@@ -182,6 +196,51 @@ new #[Title('Take Exam')] class extends Component {
         }
     }
 
+    /**
+     * "Run code" button for coding questions. The code is executed on the online compiler,
+     * never on this website.
+     */
+    public function runCode(int $questionId, string $stdin = ''): void
+    {
+        $question = $this->exam->questions->firstWhere('id', $questionId);
+
+        if (! $question || $question->type !== QuestionType::Coding) {
+            return;
+        }
+
+        $config = $question->codingConfig();
+        $language = (string) ($this->answers[$questionId]['language'] ?? '');
+        $code = AnswerGrader::valueOf($this->answers[$questionId] ?? null);
+
+        if (! in_array($language, $config['languages'], true) || $language === 'html') {
+            return;
+        }
+
+        $fail = fn (string $message): array => [
+            'ok' => false, 'status' => '', 'stdout' => '', 'stderr' => '', 'time' => null, 'error' => $message,
+        ];
+
+        if (trim($code) === '') {
+            $this->runResults[$questionId] = $fail('Write some code first, then press Run.');
+
+            return;
+        }
+
+        if (mb_strlen($code) > config('coding.max_code_length', 20000)) {
+            $this->runResults[$questionId] = $fail('Your code is too long to run.');
+
+            return;
+        }
+
+        if (! RateLimiter::attempt('code-run:'.auth()->id(), config('coding.runs_per_minute', 10), fn () => true)) {
+            $this->runResults[$questionId] = $fail('You are running code too fast. Wait a few seconds and try again.');
+
+            return;
+        }
+
+        $this->runResults[$questionId] = app(CodeRunner::class)->run($language, $code, mb_substr($stdin, 0, 2000));
+    }
+
     public function submitExam(): void
     {
         $this->completeExam('manual');
@@ -221,24 +280,63 @@ new #[Title('Take Exam')] class extends Component {
         if ($reason === 'manual') {
             $this->validate([
                 'answers'           => 'array',
-                'answers.*.value'   => 'nullable|string|max:500',
-                'answers.*.flagged' => 'nullable|boolean',
+                'answers.*.value'    => 'nullable|string|max:20000',
+                'answers.*.flagged'  => 'nullable|boolean',
+                'answers.*.language' => 'nullable|string|max:20',
             ]);
         }
 
         $questions = $this->exam->questions;
         $correct = 0;
+        $grader = app(AnswerGrader::class);
 
         foreach ($questions as $question) {
             $answerData = $this->answers[$question->id] ?? null;
-            $given = is_array($answerData)
-                ? ($answerData['value'] ?? null)
-                : $answerData;
-            $flagged = is_array($answerData)
-                ? ($answerData['flagged'] ?? false)
-                : false;
+            $given = AnswerGrader::valueOf($answerData);
+            $flagged = is_array($answerData) && ($answerData['flagged'] ?? false);
+            $language = is_array($answerData) ? (string) ($answerData['language'] ?? '') : '';
 
-            if ($given === null || $given === '') {
+            // Keep ONLY what the student typed – grading fields are added below by the server,
+            // so nobody can fake a score from the browser.
+            $this->answers[$question->id] = ['value' => $given, 'flagged' => (bool) $flagged];
+
+            if ($question->type === QuestionType::Coding) {
+                $this->answers[$question->id]['language'] = $language;
+            }
+
+            if (trim($given) === '') {
+                continue;
+            }
+
+            if ($question->type === QuestionType::Coding) {
+                $config = $question->codingConfig();
+
+                if (! in_array($language, $config['languages'], true)) {
+                    continue;
+                }
+
+                if ($language === 'html') {
+                    if ($grader->htmlMatches($given, $config['html_reference'])) {
+                        $correct++;
+                    }
+
+                    continue;
+                }
+
+                $result = app(CodeRunner::class)->grade($language, $given, $config['tests'], $grader);
+                $this->answers[$question->id]['coding'] = $result;
+
+                if ($result['passed']) {
+                    $correct++;
+                }
+
+                continue;
+            }
+
+            // Spacing / capital letters / HTML structure are checked first – instant and free.
+            if ($grader->matches($given, (string) $question->correct_answer, $question->type === QuestionType::ShortAnswer)) {
+                $correct++;
+
                 continue;
             }
 
@@ -254,7 +352,7 @@ new #[Title('Take Exam')] class extends Component {
 
                     $this->answers[$question->id] = [
                         'value'          => $given,
-                        'flagged'        => $flagged,
+                        'flagged'        => (bool) $flagged,
                         'raw_answer'     => $given,
                         'ai_score'       => $result['score'],
                         'ai_explanation' => $result['explanation'],
@@ -266,13 +364,7 @@ new #[Title('Take Exam')] class extends Component {
                         $correct++;
                     }
                 } catch (\Throwable) {
-                    if (strtolower(trim($given)) === strtolower(trim($question->correct_answer))) {
-                        $correct++;
-                    }
-                }
-            } else {
-                if (strtolower(trim($given)) === strtolower(trim($question->correct_answer))) {
-                    $correct++;
+                    // AI unavailable – the lenient local check above already said "not a match".
                 }
             }
         }
@@ -367,7 +459,11 @@ new #[Title('Take Exam')] class extends Component {
                 });
 
                 window.addEventListener('blur', () => {
-                    this.submitForViolation();
+                    // Clicking inside the code preview box is allowed (it is our own sandbox).
+                    setTimeout(() => {
+                        if (document.activeElement && document.activeElement.tagName === 'IFRAME') return;
+                        this.submitForViolation();
+                    }, 0);
                 });
             }
         }"
@@ -539,9 +635,93 @@ new #[Title('Take Exam')] class extends Component {
                     </button>
                 </div>
 
-                @if ($question->options)
+                @if ($question->type === QuestionType::Coding)
+                    @php
+                        $cfg = $question->codingConfig();
+                        $langLabels = \App\Services\CodeRunner::labels();
+                        $qid = $question->id;
+                        $rr = $runResults[$qid] ?? null;
+                        $startLang = $answers[$qid]['language'] ?? ($cfg['languages'][0] ?? 'python');
+                    @endphp
+                    <div class="space-y-3" x-data="{ lang: '{{ $startLang }}', running: false }" wire:key="code-{{ $qid }}">
+                        <div style="display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
+                            <span style="font-size:.85rem; font-weight:600;">Language</span>
+                            <select
+                                wire:model="answers.{{ $qid }}.language"
+                                x-on:change="lang = $event.target.value"
+                                style="border:1px solid #D4D4D8; border-radius:8px; padding:.35rem .6rem; font-size:.85rem; background:#fff;"
+                            >
+                                @foreach ($cfg['languages'] as $lk)
+                                    <option value="{{ $lk }}">{{ $langLabels[$lk] ?? $lk }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <textarea
+                            x-ref="code"
+                            wire:model="answers.{{ $qid }}.value"
+                            rows="12"
+                            spellcheck="false"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            placeholder="Write your code here…"
+                            x-on:keydown.tab.prevent="const t = $event.target; t.setRangeText('    ', t.selectionStart, t.selectionEnd, 'end'); t.dispatchEvent(new Event('input', { bubbles: true }))"
+                            style="width:100%; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.85rem; line-height:1.5; tab-size:4; background:#0F172A; color:#E2E8F0; border-radius:10px; padding:.85rem; border:1px solid #1E293B; resize:vertical;"
+                        ></textarea>
+
+                        {{-- HTML: live preview, nothing is sent to the server --}}
+                        <div x-show="lang === 'html'" x-cloak class="space-y-2">
+                            <button type="button"
+                                x-on:click="$refs.preview.srcdoc = $refs.code.value"
+                                style="background:#0F766E; color:#fff; border-radius:8px; padding:.4rem .9rem; font-size:.85rem; font-weight:600;">
+                                ▶ Run (show preview)
+                            </button>
+                            <div wire:ignore>
+                                <iframe x-ref="preview" sandbox="allow-scripts" title="Preview"
+                                    style="width:100%; height:260px; background:#fff; border:1px solid #D4D4D8; border-radius:10px;"></iframe>
+                            </div>
+                        </div>
+
+                        {{-- C / C++ / Java / Python / JS / PHP: run on the online compiler --}}
+                        <div x-show="lang !== 'html'" x-cloak class="space-y-2">
+                            <div style="font-size:.8rem; color:#52525B;">Input for your program (optional – only if your program reads input)</div>
+                            <textarea x-ref="stdin" rows="2" spellcheck="false"
+                                style="width:100%; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.8rem; border:1px solid #D4D4D8; border-radius:8px; padding:.5rem;"></textarea>
+                            <button type="button"
+                                x-bind:disabled="running"
+                                x-on:click="running = true; $wire.runCode({{ $qid }}, $refs.stdin.value).then(() => running = false).catch(() => running = false)"
+                                style="background:#0F766E; color:#fff; border-radius:8px; padding:.4rem .9rem; font-size:.85rem; font-weight:600;"
+                                x-bind:style="running ? 'opacity:.6' : ''">
+                                <span x-show="!running">▶ Run code</span>
+                                <span x-show="running" x-cloak>Running…</span>
+                            </button>
+
+                            @if ($rr)
+                                <div style="border:1px solid {{ ($rr['ok'] ?? false) ? '#86EFAC' : '#FCA5A5' }}; background:{{ ($rr['ok'] ?? false) ? '#F0FDF4' : '#FFF5F5' }}; border-radius:10px; padding:.7rem .85rem; font-size:.82rem;">
+                                    @if ($rr['error'])
+                                        <div style="color:#B91C1C;">{{ $rr['error'] }}</div>
+                                    @else
+                                        <div style="font-weight:700; color:{{ $rr['ok'] ? '#15803D' : '#B91C1C' }};">
+                                            {{ $rr['ok'] ? '✓ Ran successfully' : '✗ '.$rr['status'] }}
+                                            @if ($rr['time']) <span style="font-weight:400; color:#52525B;">· {{ $rr['time'] }}s</span> @endif
+                                        </div>
+                                        @if ($rr['stdout'] !== '')
+                                            <div style="margin-top:.4rem; color:#52525B;">Output</div>
+                                            <pre style="white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0;">{{ $rr['stdout'] }}</pre>
+                                        @endif
+                                        @if ($rr['stderr'] !== '')
+                                            <div style="margin-top:.4rem; color:#B91C1C;">Errors</div>
+                                            <pre style="white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; color:#B91C1C;">{{ $rr['stderr'] }}</pre>
+                                        @endif
+                                    @endif
+                                </div>
+                            @endif
+                        </div>
+                        <div style="font-size:.75rem; color:#71717A;">Your code is graded automatically when you submit: it runs against hidden test inputs and the output must match.</div>
+                    </div>
+                @elseif ($question->type->hasOptions())
                     <div class="space-y-2 pt-1">
-                        @foreach ($question->options as $option)
+                        @foreach ($question->choices() as $option)
                             <label class="quiz-option" wire:key="opt-{{ $question->id }}-{{ $loop->index }}">
                                 <input
                                     type="radio"
@@ -553,10 +733,23 @@ new #[Title('Take Exam')] class extends Component {
                         @endforeach
                     </div>
                 @else
-                    <flux:input
-                        wire:model="answers.{{ $question->id }}.value"
-                        placeholder="Type your answer…"
-                    />
+                    @if ($question->expectsCode())
+                        <textarea
+                            wire:model="answers.{{ $question->id }}.value"
+                            rows="6"
+                            spellcheck="false"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            placeholder="Type your code here… (spacing and indentation do not matter)"
+                            x-on:keydown.tab.prevent="const t = $event.target; t.setRangeText('    ', t.selectionStart, t.selectionEnd, 'end'); t.dispatchEvent(new Event('input', { bubbles: true }))"
+                            style="width:100%; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.85rem; line-height:1.5; tab-size:4; border:1px solid #D4D4D8; border-radius:10px; padding:.7rem; resize:vertical;"
+                        ></textarea>
+                    @else
+                        <flux:input
+                            wire:model="answers.{{ $question->id }}.value"
+                            placeholder="Type your answer…"
+                        />
+                    @endif
 
                     {{-- Hint section for short-answer questions --}}
                     <div

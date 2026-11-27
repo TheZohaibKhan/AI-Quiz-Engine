@@ -24,3 +24,5 @@ yarn-error.log
 /.claude/settings.local.json
 render.env
 testing
+
+.coding-update-backup

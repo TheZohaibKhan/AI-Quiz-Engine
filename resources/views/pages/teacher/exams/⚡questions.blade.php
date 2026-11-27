@@ -6,6 +6,7 @@ use App\Jobs\ImportQuestionsFromCsvJob;
 use App\Jobs\ProcessGeneratedQuestionsJob;
 use App\Models\Exam;
 use App\Models\Question;
+use App\Services\CodeRunner;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
@@ -28,6 +29,15 @@ new #[Title('Manage Questions')] class extends Component {
 
     /** @var array<int, string> */
     public array $options = ['', '', '', ''];
+
+    // --- Coding question settings ---
+    /** @var array<int, string> */
+    public array $codingLanguages = ['python'];
+
+    /** @var array<int, array{input: string, output: string}> */
+    public array $codingTests = [['input' => '', 'output' => '']];
+
+    public string $codingHtml = '';
 
     // --- AI generation panel ---
     public bool $showAiPanel = false;
@@ -84,13 +94,92 @@ new #[Title('Manage Questions')] class extends Component {
         $this->question = $question->question;
         $this->type = $question->type->value;
         $this->correct_answer = $question->correct_answer;
-        $this->options = $question->options ?? ['', '', '', ''];
+        $this->options = $question->choices() ?: ['', '', '', ''];
+
+        $coding = $question->codingConfig();
+        $this->codingLanguages = $coding['languages'] ?? ['python'];
+        $this->codingTests = $coding['tests'] ?: [['input' => '', 'output' => '']];
+        $this->codingHtml = $coding['html_reference'] ?? '';
+
         $this->showForm = true;
         $this->showAiPanel = false;
     }
 
+    public function addCodingTest(): void
+    {
+        if (count($this->codingTests) < 10) {
+            $this->codingTests[] = ['input' => '', 'output' => ''];
+        }
+    }
+
+    public function removeCodingTest(int $index): void
+    {
+        unset($this->codingTests[$index]);
+        $this->codingTests = array_values($this->codingTests) ?: [['input' => '', 'output' => '']];
+    }
+
+    private function saveCodingQuestion(): void
+    {
+        $rules = [
+            'question'          => 'required|string|max:1000',
+            'codingLanguages'   => 'required|array|min:1',
+            'codingLanguages.*' => 'in:'.implode(',', array_keys(CodeRunner::LANGUAGES)),
+        ];
+
+        $needsTests = collect($this->codingLanguages)->contains(fn ($l) => $l !== 'html');
+        $needsHtml = in_array('html', $this->codingLanguages, true);
+
+        if ($needsTests) {
+            $rules['codingTests']          = 'required|array|min:1|max:10';
+            $rules['codingTests.*.input']  = 'nullable|string|max:2000';
+            $rules['codingTests.*.output'] = 'required|string|max:2000';
+        }
+
+        if ($needsHtml) {
+            $rules['codingHtml'] = 'required|string|max:5000';
+        }
+
+        $this->validate($rules, [], [
+            'codingLanguages'      => 'languages',
+            'codingTests.*.output' => 'expected output',
+            'codingHtml'           => 'expected HTML',
+        ]);
+
+        $config = [
+            'languages'      => array_values($this->codingLanguages),
+            'tests'          => $needsTests
+                ? array_values(array_map(fn ($t) => [
+                    'input'  => (string) ($t['input'] ?? ''),
+                    'output' => (string) ($t['output'] ?? ''),
+                ], $this->codingTests))
+                : [],
+            'html_reference' => $needsHtml ? $this->codingHtml : '',
+        ];
+
+        $data = [
+            'question'       => $this->question,
+            'type'           => QuestionType::Coding->value,
+            'correct_answer' => mb_substr('Coding: '.implode(', ', $config['languages']), 0, 250),
+            'options'        => $config,
+        ];
+
+        if ($this->editingId) {
+            Question::findOrFail($this->editingId)->update($data);
+        } else {
+            $this->exam->questions()->create([...$data, 'order' => $this->exam->questions()->max('order') + 1]);
+        }
+
+        $this->resetForm();
+    }
+
     public function saveQuestion(): void
     {
+        if ($this->type === QuestionType::Coding->value) {
+            $this->saveCodingQuestion();
+
+            return;
+        }
+
         $rules = [
             'question'       => 'required|string|max:1000',
             'type'           => 'required|string|in:'.implode(',', array_column(QuestionType::cases(), 'value')),
@@ -422,6 +511,13 @@ new #[Title('Manage Questions')] class extends Component {
         return QuestionType::cases();
     }
 
+    /** The AI generator cannot write coding questions (they need test cases). */
+    #[Computed]
+    public function aiQuestionTypes(): array
+    {
+        return QuestionType::generatable();
+    }
+
     #[Computed]
     public function currentTypeHasOptions(): bool
     {
@@ -469,6 +565,9 @@ new #[Title('Manage Questions')] class extends Component {
         $this->type = QuestionType::MultipleChoice->value;
         $this->correct_answer = '';
         $this->options = ['', '', '', ''];
+        $this->codingLanguages = ['python'];
+        $this->codingTests = [['input' => '', 'output' => '']];
+        $this->codingHtml = '';
         $this->resetValidation();
     }
 };
@@ -580,7 +679,7 @@ new #[Title('Manage Questions')] class extends Component {
                     <flux:label>Question Type</flux:label>
 
                     <flux:select wire:model="aiType">
-                        @foreach ($this->questionTypes as $qType)
+                        @foreach ($this->aiQuestionTypes as $qType)
                             <flux:select.option :value="$qType->value">
                                 {{ $qType->label() }}
                             </flux:select.option>
@@ -919,6 +1018,64 @@ new #[Title('Manage Questions')] class extends Component {
                 <flux:error name="type" />
             </flux:field>
 
+            @if ($type === 'coding')
+                <div class="space-y-4">
+                    <flux:field>
+                        <flux:label>Languages students can use</flux:label>
+                        <div style="display:flex; flex-wrap:wrap; gap:.5rem 1.4rem;">
+                            @foreach (\App\Services\CodeRunner::labels() as $langKey => $langLabel)
+                                <label style="display:flex; align-items:center; gap:.4rem; font-size:.875rem; cursor:pointer;">
+                                    <input type="checkbox" wire:model.live="codingLanguages" value="{{ $langKey }}" />
+                                    {{ $langLabel }}
+                                </label>
+                            @endforeach
+                        </div>
+                        <flux:description>Students get a code editor with a Run button. They pick one of the languages you tick here.</flux:description>
+                        <flux:error name="codingLanguages" />
+                    </flux:field>
+
+                    @if (collect($codingLanguages)->contains(fn ($l) => $l !== 'html'))
+                        <div class="space-y-3">
+                            <div>
+                                <flux:heading size="sm">Test cases (C, C++, Java, Python, JavaScript, PHP)</flux:heading>
+                                <flux:text size="sm">The student's code is run once per test case. The answer is correct only if the program's output matches the expected output of every test. Spacing at the end of lines is ignored. Students never see these tests.</flux:text>
+                            </div>
+
+                            @foreach ($codingTests as $ti => $test)
+                                <div wire:key="ctest-{{ $ti }}" style="border:1px solid #E4E4E7; border-radius:10px; padding:.75rem; display:grid; gap:.6rem;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <strong style="font-size:.85rem;">Test {{ $ti + 1 }}</strong>
+                                        @if (count($codingTests) > 1)
+                                            <flux:button size="sm" variant="ghost" icon="trash" class="text-red-500" wire:click="removeCodingTest({{ $ti }})" />
+                                        @endif
+                                    </div>
+                                    <flux:field>
+                                        <flux:label>Input given to the program (leave empty if it reads nothing)</flux:label>
+                                        <flux:textarea wire:model="codingTests.{{ $ti }}.input" rows="2" />
+                                    </flux:field>
+                                    <flux:field>
+                                        <flux:label>Expected output</flux:label>
+                                        <flux:textarea wire:model="codingTests.{{ $ti }}.output" rows="2" />
+                                        <flux:error name="codingTests.{{ $ti }}.output" />
+                                    </flux:field>
+                                </div>
+                            @endforeach
+
+                            <flux:button size="sm" variant="ghost" icon="plus" wire:click="addCodingTest">Add another test case</flux:button>
+                            <flux:error name="codingTests" />
+                        </div>
+                    @endif
+
+                    @if (in_array('html', $codingLanguages, true))
+                        <flux:field>
+                            <flux:label>Expected HTML (for HTML questions)</flux:label>
+                            <flux:textarea wire:model="codingHtml" rows="6" placeholder="Paste a correct solution, e.g. &lt;ol&gt;&lt;li&gt;HTML&lt;/li&gt;&lt;/ol&gt;" style="font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.85rem;" />
+                            <flux:description>The student's page must contain all of these tags, text and attributes. Spacing, indentation, upper/lower case and attribute order are ignored, and extra tags are allowed.</flux:description>
+                            <flux:error name="codingHtml" />
+                        </flux:field>
+                    @endif
+                </div>
+            @else
             @if ($this->currentTypeHasOptions)
                 <div class="space-y-2">
                     <flux:label>Answer Options</flux:label>
@@ -940,11 +1097,16 @@ new #[Title('Manage Questions')] class extends Component {
 
                 <flux:input
                     wire:model="correct_answer"
-                    placeholder="Enter the correct answer exactly as written"
+                    placeholder="Enter the correct answer (spacing and capital letters are ignored)"
                 />
+
+                @if ($type === 'short_answer')
+                    <flux:description>Tip: you can accept several answers by separating them with || &nbsp;(e.g. colour || color). For code answers, spacing and indentation never matter.</flux:description>
+                @endif
 
                 <flux:error name="correct_answer" />
             </flux:field>
+            @endif
 
             <div class="flex justify-end gap-3">
                 <flux:button
@@ -1106,15 +1268,23 @@ new #[Title('Manage Questions')] class extends Component {
                             {{ $q->type->label() }}
                         </flux:badge>
 
-                        <flux:text
-                            size="sm"
-                            class="text-zinc-500"
-                        >
-                            Correct: {{ $q->correct_answer }}
-                        </flux:text>
+                        @if ($q->type === \App\Enums\QuestionType::Coding)
+                            @php $cc = $q->codingConfig(); @endphp
+                            <flux:text size="sm" class="text-zinc-500">
+                                {{ collect($cc['languages'])->map(fn ($l) => \App\Services\CodeRunner::LANGUAGES[$l]['label'] ?? $l)->implode(', ') }}
+                                @if (count($cc['tests'])) · {{ count($cc['tests']) }} test case(s) @endif
+                            </flux:text>
+                        @else
+                            <flux:text
+                                size="sm"
+                                class="text-zinc-500"
+                            >
+                                Correct: {{ $q->correct_answer }}
+                            </flux:text>
+                        @endif
                     </div>
 
-                    @if ($q->options)
+                    @if ($q->type->hasOptions() && $q->options)
                         <div class="flex flex-wrap gap-1 mt-1">
                             @foreach ($q->options as $opt)
                                 <flux:badge

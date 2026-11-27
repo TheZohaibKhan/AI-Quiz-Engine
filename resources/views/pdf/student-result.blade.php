@@ -85,14 +85,15 @@
 
             if ($isAiGraded) {
                 $rawAnswer = $given['raw_answer'] ?? $given['value'] ?? null;
-                $isCorrect = ($given['ai_score'] ?? 0) >= 50;
             } elseif (is_array($given)) {
                 $rawAnswer = $given['value'] ?? null;
-                $isCorrect = $rawAnswer && strtolower(trim($rawAnswer)) === strtolower(trim($question->correct_answer));
             } else {
                 $rawAnswer = $given;
-                $isCorrect = $rawAnswer && strtolower(trim($rawAnswer)) === strtolower(trim($question->correct_answer));
             }
+
+            $isCorrect = app(\App\Services\AnswerGrader::class)->isCorrect($question, $given);
+            $isCoding  = $question->type === \App\Enums\QuestionType::Coding;
+            $showAi    = $isAiGraded && ((($given['ai_score'] ?? 0) >= 50) === $isCorrect);
         @endphp
         <div class="question {{ $isCorrect ? 'correct' : 'incorrect' }}">
             <div class="question-header">
@@ -101,7 +102,7 @@
                     @if ($isFlagged)
                         <span style="font-size:10px; color:#0d9488;">⚑ Flagged</span>
                     @endif
-                    @if ($isAiGraded)
+                    @if ($showAi)
                         <span class="question-badge q-ai">AI {{ $given['ai_score'] }}%</span>
                     @else
                         <span class="question-badge {{ $isCorrect ? 'q-correct' : 'q-incorrect' }}">
@@ -111,13 +112,17 @@
                 </div>
             </div>
 
-            <div class="answer-row">Your answer: <strong>{{ $rawAnswer ?? 'Not answered' }}</strong></div>
+            <div class="answer-row">Your answer: <strong style="white-space:pre-wrap; font-family:{{ ($isCoding || str_contains((string) $rawAnswer, "\n")) ? 'monospace' : 'inherit' }};">{{ $rawAnswer ?? 'Not answered' }}</strong></div>
 
-            @if (! $isCorrect && ! $isAiGraded)
+            @if ($isCoding && is_array($given) && isset($given['coding']))
+                <div class="answer-row">Tests passed: <strong>{{ $given['coding']['passed_count'] ?? 0 }} / {{ $given['coding']['total'] ?? 0 }}</strong></div>
+            @endif
+
+            @if (! $isCorrect && ! $showAi && ! $isCoding)
                 <div class="correct-answer-row">Correct answer: <strong>{{ $question->correct_answer }}</strong></div>
             @endif
 
-            @if ($isAiGraded)
+            @if ($showAi)
                 @if ($given['ai_explanation'] ?? null)
                     <div class="ai-explanation">{{ $given['ai_explanation'] }}</div>
                 @endif

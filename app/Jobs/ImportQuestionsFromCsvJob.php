@@ -71,6 +71,11 @@ class ImportQuestionsFromCsvJob implements ShouldQueue
 
             $type = QuestionType::tryFrom($typeRaw) ?? QuestionType::ShortAnswer;
 
+            // Coding questions need languages + test cases, so they are created in the question form only.
+            if ($type === QuestionType::Coding) {
+                $type = QuestionType::ShortAnswer;
+            }
+
             $options = null;
             if ($type->hasOptions() && ! empty($data['options'])) {
                 $options = array_values(array_filter(array_map('trim', explode('|', $data['options']))));

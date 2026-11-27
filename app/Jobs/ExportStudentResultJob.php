@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Mail\ExportReadyMail;
 use App\Models\Attempt;
+use App\Services\AnswerGrader;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -51,28 +52,11 @@ class ExportStudentResultJob implements ShouldQueue
 
     private function computeCorrectCount(Attempt $attempt): int
     {
+        $grader = app(AnswerGrader::class);
         $correct = 0;
 
         foreach ($attempt->exam->questions as $question) {
-            $given = $attempt->answers[$question->id] ?? null;
-
-            if ($given === null) {
-                continue;
-            }
-
-            if (is_array($given)) {
-                if ($given['ai_graded'] ?? false) {
-                    if (($given['ai_score'] ?? 0) >= 50) {
-                        $correct++;
-                    }
-                } else {
-                    $value = $given['value'] ?? null;
-
-                    if ($value && strtolower(trim($value)) === strtolower(trim($question->correct_answer))) {
-                        $correct++;
-                    }
-                }
-            } elseif (strtolower(trim($given)) === strtolower(trim($question->correct_answer))) {
+            if ($grader->isCorrect($question, $attempt->answers[$question->id] ?? null)) {
                 $correct++;
             }
         }

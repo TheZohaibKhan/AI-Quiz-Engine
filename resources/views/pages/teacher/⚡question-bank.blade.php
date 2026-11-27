@@ -146,7 +146,7 @@ new #[Title('Question Bank')] class extends Component {
                         <flux:badge size="sm" color="blue">{{ $q->type->label() }}</flux:badge>
                         <flux:text size="sm" class="text-zinc-500">Correct: {{ $q->correct_answer }}</flux:text>
                     </div>
-                    @if ($q->options)
+                    @if ($q->type->hasOptions() && $q->options)
                         <div class="flex flex-wrap gap-1 mt-1">
                             @foreach ($q->options as $opt)
                                 <flux:badge size="sm" :color="$opt === $q->correct_answer ? 'green' : 'zinc'">
